@@ -4,7 +4,10 @@ import socket
 import threading
 from threading import Lock
 import time
+from datetime import datetime
 import errno
+
+timestamp = lambda: datetime.now().strftime("%I:%M:%S.%f %p")
 
 class Connection:
     def __init__(self, BUFFER_SIZE=1024, TCP_IP='127.0.0.1', LISTEN_PORT=41414, SEND_PORT=1337, SERVER=True):
@@ -18,15 +21,30 @@ class Connection:
         self.conn = None
         self.thread = threading.Thread(target=self.read_data, daemon=True)
         self.thread.start()
+        self.data = ''
     
     def read_data(self):
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
         retry = 0
 
         while True:
             try:
-                self.socket.bind((self.TCP_IP, self.LISTEN_PORT))
+                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                if self.SERVER:
+                    self.socket.bind((self.TCP_IP, self.LISTEN_PORT))
+                    self.socket.listen(1)
+                    
+                    print("[%s] Acting as server! Waiting..." % timestamp())
+                    self.conn, self.addr = self.socket.accept()
+                    print("[%s] Connected to client!" % timestamp())
+                    self.socket.settimeout(.1)
+                    
+                else:
+                    print("[%s] Acting as client! Connecting..." % timestamp())
+                    self.socket.connect((self.TCP_IP, self.LISTEN_PORT))
+                    self.socket.sendall(b'TEST MESSAGE; CONNECTION ACQUIRED!')
+                    self.socket.settimeout(1)
+                    
+                    
                 break
             except socket.error as e:
                 #self.data = e
@@ -36,46 +54,40 @@ class Connection:
                         raise Exception("Maximum retries reached!")
                         #self.data = 'maxtries'
                         break
-                    print("Another server is already running! Switching ports and retrying (%d/3)..." % retry)
-                    sp = self.SEND_PORT
-                    self.SEND_PORT = self.LISTEN_PORT
-                    self.LISTEN_PORT = sp
+                    print("[%s] Another server is already running! Switching ports and retrying (%d/3)..." % (timestamp(), retry))
+                    #sp = self.SEND_PORT
+                    #self.SEND_PORT = self.LISTEN_PORT
+                    #self.LISTEN_PORT = sp
                     self.SERVER = not self.SERVER
                 else:
-                    print(f"Another error occured! {e}")
+                    print(f"[{timestamp()}] Another error occured! {e}")
                     break
         
-        if self.SERVER:
-            pass
-        else:
-            self.socket.connect((self.TCP_IP, self.LISTEN_PORT))
-            s.sendall(b'Hello, world')
-            
         #with self.
         while True:
             self.data = ''
+            data = True
             
-            if self.server:
-                self.socket.listen(1)
-                self.conn, self.addr = self.socket.accept()
-
-                while True:
-                    data = self.conn.recv(self.BUFFER_SIZE)
-                    self.data += data
-                    
-                    if not data:
-                        break
+            if self.SERVER:
+                connection = self.conn
+                msg = bytes("Hello, client! %s" % timestamp(), encoding='utf-8')
             else:
-                while True:
-                    data = self.conn.recv(self.BUFFER_SIZE)
-                    self.data += data
-                    
-                    if not data:
-                        self.data += s.recv(self.BUFFER_SIZE)
+                connection = self.socket
+                msg = bytes("Hello, server! %s" % timestamp(), encoding='utf-8')
                 
-
+            try:
+                data = connection.recv(self.BUFFER_SIZE).decode()
+            except socket.timeout:
+                data = ''
+                    
+            self.data += data
+            connection.sendall(msg)
+                        
+            print("<<", self.data)
+            print(">>", msg)
+                        
             
-            time.sleep(0.5)
+            time.sleep(1)
             
     def send_data(self, data):
         if self.conn:
@@ -212,10 +224,16 @@ class TextLabel:
         """
         for grid in self.pixel_grids:
             grid.display()
-
+oldconn = ''
 while ON:  # Main Update Loop
     # Tests for window closing
-    print(conn.data)
+    newconn = conn.data
+
+    if not oldconn == newconn:
+        print("conn.data: ", newconn)
+
+    oldconn = newconn
+        
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             ON = False
